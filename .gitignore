@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-ssr/
+.env
+.env.local
+.env*.local
+*.local
+.DS_Store
+*.log
+npm-debug.log*
+
+# 本地密钥文件（含真实 API Key，禁止提交）
+myApiKey.txt
+*[Aa]pi[Kk]ey*.txt
