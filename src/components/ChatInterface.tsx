@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
-import { ChatApiError, streamChat, toFriendlyError } from '../api';
+import {
+  ChatApiError,
+  getApiKeySource,
+  hasApiKey,
+  streamChat,
+  toFriendlyError,
+} from '../api';
+import type { ApiKeySource } from '../api';
+import { API_KEY_STORAGE_KEY } from '../settings';
 import { clearMessagesStorage, loadMessages, saveMessages } from '../storage';
 import type { ChatMessagePayload, Message } from '../types';
 import { createId, createMessage } from '../utils';
+import { ApiKeySettings } from './ApiKeySettings';
 import { MessageBubble } from './MessageBubble';
 
 interface Notice {
@@ -20,6 +29,8 @@ export function ChatInterface(): ReactElement {
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [keySource, setKeySource] = useState<ApiKeySource>(() => getApiKeySource());
 
   // 同步镜像 messages，保证流式回调与 finally 中读到的始终是最新数据
   const messagesRef = useRef<Message[]>(messages);
@@ -36,6 +47,38 @@ export function ChatInterface(): ReactElement {
     },
     [],
   );
+
+  /** 重新读取密钥来源，用于其它标签页 storage 事件同步。 */
+  const refreshKeySource = useCallback((): void => {
+    setKeySource(getApiKeySource());
+  }, []);
+
+  // 其它标签页修改 / 清除密钥时同步来源状态（localStorage.clear 时 key 为 null）
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent): void => {
+      if (event.key === API_KEY_STORAGE_KEY || event.key === null) {
+        refreshKeySource();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return (): void => window.removeEventListener('storage', handleStorage);
+  }, [refreshKeySource]);
+
+  const handleOpenSettings = useCallback((): void => setShowSettings(true), []);
+  const handleCloseSettings = useCallback((): void => setShowSettings(false), []);
+
+  /** 设置面板保存 / 清除成功后刷新来源状态并给出一条 info 提示。 */
+  const handleApiKeyChanged = useCallback((): void => {
+    const next = getApiKeySource();
+    setKeySource(next);
+    let text = '已清除自定义密钥，当前未配置密钥，请点击右上角「设置」填写。';
+    if (next === 'custom') {
+      text = '已保存自定义 API Key，下一次发送消息即会生效。';
+    } else if (next === 'env') {
+      text = '已清除自定义密钥，现恢复使用环境变量中的密钥。';
+    }
+    setNotice({ kind: 'info', text });
+  }, []);
 
   // 第五步：消息更新后防抖保存，避免流式期间每个 chunk 都写 LocalStorage
   useEffect(() => {
@@ -78,6 +121,16 @@ export function ChatInterface(): ReactElement {
   const handleSend = useCallback(async (): Promise<void> => {
     const text = input.trim();
     if (!text || loadingRef.current) {
+      return;
+    }
+    // 发送前置拦截：未配置任何密钥时打开设置面板；
+    // 不产生用户消息 / 空 AI 占位气泡，也不进入加载态。
+    if (!hasApiKey()) {
+      setShowSettings(true);
+      setNotice({
+        kind: 'info',
+        text: '请先配置 API Key，填写并保存后即可开始对话。',
+      });
       return;
     }
     loadingRef.current = true;
@@ -184,14 +237,25 @@ export function ChatInterface(): ReactElement {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleClear}
-          title="清空本地对话记录"
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800"
-        >
-          清空对话
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleOpenSettings}
+            title="配置 API Key"
+            aria-label="打开 API Key 设置"
+            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800"
+          >
+            ⚙ 设置
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            title="清空本地对话记录"
+            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800"
+          >
+            清空对话
+          </button>
+        </div>
       </header>
 
       {notice && (
@@ -211,6 +275,24 @@ export function ChatInterface(): ReactElement {
             className="text-base leading-none opacity-60 hover:opacity-100"
           >
             ×
+          </button>
+        </div>
+      )}
+
+      {keySource === 'none' && (
+        <div
+          role="status"
+          className="flex shrink-0 items-center justify-between gap-3 bg-blue-50 px-4 py-2 text-xs text-blue-700"
+        >
+          <span className="flex-1 leading-relaxed">
+            尚未配置 API Key，点击「设置」填写后即可开始对话
+          </span>
+          <button
+            type="button"
+            onClick={handleOpenSettings}
+            className="shrink-0 rounded-md bg-wechat-green px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:brightness-95"
+          >
+            立即配置
           </button>
         </div>
       )}
@@ -278,6 +360,13 @@ export function ChatInterface(): ReactElement {
           {isLoading ? '思考中... AI 正在逐字生成回答' : '内容由 AI 生成，请注意甄别'}
         </p>
       </footer>
+
+      {showSettings && (
+        <ApiKeySettings
+          onClose={handleCloseSettings}
+          onChanged={handleApiKeyChanged}
+        />
+      )}
     </div>
   );
 }

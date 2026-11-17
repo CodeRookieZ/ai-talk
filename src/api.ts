@@ -1,4 +1,5 @@
 import type { ChatMessagePayload } from './types';
+import { loadCustomApiKey, maskApiKey } from './settings';
 
 /** 开发环境默认走 vite.config.ts 的 /zhipu 同源代理。 */
 const DEFAULT_BASE_URL = '/zhipu/api/paas/v4/chat/completions';
@@ -63,13 +64,61 @@ function isAbortError(error: unknown, signal?: AbortSignal): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
-/** 从环境变量读取配置，禁止硬编码密钥；缺失时给出中文提示。 */
+/** 密钥来源：界面自定义 / 环境变量 / 未配置。 */
+export type ApiKeySource = 'custom' | 'env' | 'none';
+
+/**
+ * 安全读取环境变量中的回退密钥。
+ * 显式标注可空类型并配合可选链，兼容 esbuild / Node 离线测试中
+ * import.meta.env 未注入的情况，避免直接访问导致崩溃。
+ */
+function readEnvApiKey(): string {
+  const env: { readonly VITE_ZHIPU_API_KEY?: string } | undefined = import.meta.env;
+  return (env?.VITE_ZHIPU_API_KEY ?? '').trim();
+}
+
+/**
+ * 动态解析最终生效的 API Key：界面自定义（LocalStorage）优先，
+ * 未配置时回退环境变量 `VITE_ZHIPU_API_KEY`。
+ * 每次调用都重新读取、不在模块顶层缓存，保证界面保存后下一次发送立即生效。
+ */
+export function getApiKey(): string {
+  const customKey = loadCustomApiKey();
+  if (customKey) {
+    return customKey;
+  }
+  return readEnvApiKey();
+}
+
+/** 返回当前生效密钥的来源：界面自定义 / 环境变量 / 未配置。 */
+export function getApiKeySource(): ApiKeySource {
+  if (loadCustomApiKey()) {
+    return 'custom';
+  }
+  return readEnvApiKey() ? 'env' : 'none';
+}
+
+/** 是否已配置任一来源的 API Key。 */
+export function hasApiKey(): boolean {
+  return getApiKey().length > 0;
+}
+
+/** 返回脱敏后的生效密钥；未配置时返回 null，绝不返回明文。 */
+export function getMaskedApiKey(): string | null {
+  const key = getApiKey();
+  return key ? maskApiKey(key) : null;
+}
+
+/**
+ * 组装请求配置：密钥由 getApiKey() 动态解析，model / url 仍取自环境变量并使用默认值；
+ * 禁止硬编码密钥，缺失时给出中文提示。
+ */
 function resolveConfig(): ApiConfig {
   const env = import.meta.env;
-  const apiKey = (env.VITE_ZHIPU_API_KEY ?? '').trim();
+  const apiKey = getApiKey();
   if (!apiKey) {
     throw new ChatApiError(
-      '尚未配置 API Key：请在项目根目录的 .env.local 中设置 VITE_ZHIPU_API_KEY，然后重启开发服务器。',
+      '尚未配置 API Key：请点击右上角「设置」填写，或在项目根目录 .env.local 中设置 VITE_ZHIPU_API_KEY 后重启开发服务器。',
     );
   }
   const model = (env.VITE_ZHIPU_MODEL ?? '').trim() || DEFAULT_MODEL;
@@ -81,7 +130,7 @@ function resolveConfig(): ApiConfig {
 async function buildHttpErrorMessage(response: Response): Promise<string> {
   const statusMessages: Record<number, string> = {
     400: '请求参数有误，请检查模型名称或消息格式。',
-    401: 'API Key 无效或已过期：请到 https://bigmodel.cn/usercenter/proj-mgmt/apikeys 检查密钥是否完整复制（现行密钥通常为 id.secret 形式）、是否已启用且未过期；更新 .env.local 后重启开发服务器。',
+    401: 'API Key 无效或已过期：请到 https://bigmodel.cn/usercenter/proj-mgmt/apikeys 检查密钥是否完整复制（现行密钥通常为 id.secret 形式）、是否已启用且未过期；更新 .env.local 后重启开发服务器。也可点击右上角「设置」直接更换密钥。',
     403: '无权访问该模型，请确认账号权限或 VITE_ZHIPU_MODEL 配置。',
     404: '接口地址不存在，请检查 VITE_ZHIPU_BASE_URL 与代理配置。',
     429: '请求过于频繁或额度不足，请稍后再试。',
