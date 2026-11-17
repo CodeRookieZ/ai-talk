@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** 智谱 AI API Key（仅本地开发使用，生产应由后端代理持有）。 */
+  /** 可选回退：界面未配置时使用的 API Key（仅本地开发，生产应由后端代理持有）。 */
   readonly VITE_ZHIPU_API_KEY?: string;
   /** 模型名称，默认 glm-4.5-flash。 */
   readonly VITE_ZHIPU_MODEL?: string;
