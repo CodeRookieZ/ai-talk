@@ -21,7 +21,7 @@ export default async function handler(req) {
   // 构建智谱 API 的真实地址
   const url = new URL(req.url);
   // 将 /zhipu/api/paas/v4/... 映射为 https://open.bigmodel.cn/api/paas/v4/...
-  const upstreamPath = url.pathname.replace(/^\/zhipu/, '');
+  const upstreamPath = url.pathname.replace(/^\/api\/zhipu/, '');
   const upstreamUrl = `https://open.bigmodel.cn${upstreamPath}`;
 
   const body = await req.text();

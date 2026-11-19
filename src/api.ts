@@ -2,7 +2,7 @@ import type { ChatMessagePayload } from './types';
 import { loadCustomApiKey, maskApiKey } from './settings';
 
 /** 开发环境默认走 vite.config.ts 的 /zhipu 同源代理。 */
-const DEFAULT_BASE_URL = '/zhipu/api/paas/v4/chat/completions';
+const DEFAULT_BASE_URL = '/api/zhipu/api/paas/v4/chat/completions';
 const DEFAULT_MODEL = 'glm-4.5-flash';
 const DONE_MARKER = '[DONE]';
 
