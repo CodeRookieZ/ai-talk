@@ -25,6 +25,7 @@ export default async function handler(req) {
   const upstreamUrl = `https://open.bigmodel.cn${upstreamPath}`;
 
   const body = await req.text();
+  console.log('[zhipu-proxy] upstream status =', upstreamResp.status);
 
   const upstreamResp = await fetch(upstreamUrl, {
     method: 'POST',
@@ -41,7 +42,7 @@ export default async function handler(req) {
     headers: {
       'Content-Type': upstreamResp.headers.get('content-type') || 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      'X-Debug-Upstream-Url': upstreamUrl,   // 仅用于排查，上线后可删
     },
   });
 }
