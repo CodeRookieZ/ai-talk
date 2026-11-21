@@ -14,11 +14,11 @@ export default defineConfig({
     // 端口被占用时直接报错，避免静默漂移到其它端口导致自测命中无关服务
     strictPort: true,
     proxy: {
-      '/zhipu': {
+      '/api/zhipu': {
         target: 'https://open.bigmodel.cn',
         changeOrigin: true,
         secure: true,
-        rewrite: (path: string): string => path.replace(/^\/zhipu/, ''),
+        rewrite: (path: string): string => path.replace(/^\/api\/zhipu/, ''),
       },
     },
   },
