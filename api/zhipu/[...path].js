@@ -1,48 +1,50 @@
-// api/zhipu/[...path].js
-export const config = { runtime: 'edge' }; // 流式传输需要 Edge Runtime
+export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  // 处理 CORS 预检
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      },
-    });
-  }
+  console.log('[zhipu-proxy] handler invoked, method =', req.method);
 
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  // 构建智谱 API 的真实地址
-  const url = new URL(req.url);
-  // 将 /zhipu/api/paas/v4/... 映射为 https://open.bigmodel.cn/api/paas/v4/...
-  const upstreamPath = url.pathname.replace(/^\/api\/zhipu/, '');
-  const upstreamUrl = `https://open.bigmodel.cn${upstreamPath}`;
+  try {
+    const url = new URL(req.url);
+    const upstreamPath = url.pathname.replace(/^\/api\/zhipu/, '');
+    const upstreamUrl = `https://open.bigmodel.cn${upstreamPath}`;
+    console.log('[zhipu-proxy] upstreamUrl =', upstreamUrl);
 
-  const body = await req.text();
-  console.log('[zhipu-proxy] upstream status =', upstreamResp.status);
+    const apiKey = process.env.ZHIPU_API_KEY;
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: { message: 'ZHIPU_API_KEY is not set in environment' } }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
 
-  const upstreamResp = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.ZHIPU_API_KEY}`, // 密钥仅在服务端使用
-    },
-    body,
-  });
+    const body = await req.text();
+    const upstreamResp = await fetch(upstreamUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body,
+    });
 
-  // 流式回传响应（保留 SSE）
-  return new Response(upstreamResp.body, {
-    status: upstreamResp.status,
-    headers: {
-      'Content-Type': upstreamResp.headers.get('content-type') || 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'X-Debug-Upstream-Url': upstreamUrl,   // 仅用于排查，上线后可删
-    },
-  });
+    console.log('[zhipu-proxy] upstream status =', upstreamResp.status);
+
+    return new Response(upstreamResp.body, {
+      status: upstreamResp.status,
+      headers: {
+        'Content-Type': upstreamResp.headers.get('content-type') || 'application/json',
+        'Cache-Control': 'no-cache',
+      },
+    });
+  } catch (e) {
+    console.error('[zhipu-proxy] error:', String(e && e.message || e), e && e.stack);
+    return new Response(
+      JSON.stringify({ error: { message: String(e && e.message || e) } }),
+      { status: 502, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 }
