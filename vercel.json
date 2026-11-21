@@ -1,6 +1,12 @@
 {
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    {
+      "source": "/api/zhipu/(.*)",
+      "destination": "/api/zhipu/[...path]"
+    },
+    {
+      "source": "/((?!api/|assets/|favicon.ico|.*\\..*).*)",
+      "destination": "/index.html"
+    }
   ]
 }
